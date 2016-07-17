@@ -1,0 +1,19 @@
+# ignores for django (python) and vim
+
+# python (2 and 3)
+*.pyc
+__pychache__
+
+# setuptools
+/dist
+/MANIFEST
+
+# virtualenv
+/venv-hq
+
+# vim
+*.swp
+
+# sqlite3 dbs
+*.sqlite3
+
