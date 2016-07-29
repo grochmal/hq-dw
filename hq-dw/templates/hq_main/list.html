@@ -1,0 +1,35 @@
+{% extends "hq_main/hq.html" %}
+
+{% block title %}
+Item List
+{% endblock %}
+
+{% block page_body %}
+
+{{ block.super }}
+
+<p>list</p>
+<ul>
+  {% for object in object_list %}
+    <li><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>
+  {% endfor %}
+</ul>
+
+<div>
+  {% if page_obj.has_other_pages %}
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}">
+        &lt; previous &lt;
+      </a>
+    {% endif %}
+      page {{ page_obj.number }}
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}">
+        &gt; next &gt;
+      </a>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% endblock %}
+

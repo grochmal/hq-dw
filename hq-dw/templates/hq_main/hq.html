@@ -1,0 +1,106 @@
+{% extends "hq_main/base.html" %}
+
+{% block extra_head %}
+
+<meta name="description" content="HQ Warehouse" />
+
+<style>
+<!--
+
+label {
+  display : block
+}
+.helptext {
+  font-size : 0.8em;
+}
+.float {
+  float : right;
+}
+
+-->
+</style>
+
+<script>
+<!--
+
+// This is a base64 encoded HQ logo 300x300px
+var hq_logo = '\
+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'
+
+window.addEventListener('load', function(ev) {
+  // build the page icon
+  var head = document.getElementsByTagName('head')[0];
+  var link = document.createElement('link');
+  link.rel = 'icon';
+  link.href = 'data:image/png;base64,' + hq_logo;
+  head.appendChild(link);
+
+  // and add the small logo on the left
+  var lfloat = document.getElementById('hq-logo');
+  var hqimg = document.createElement('img');
+  hqimg.src = 'data:image/png;base64,' + hq_logo;
+  hqimg.alt = 'HQ Logo';
+  lfloat.appendChild(hqimg);
+});
+
+-->
+</script>
+
+{% endblock %}
+
+{% block page_body %}
+
+<div id="hq-logo" class="float">
+</div>
+
+{% endblock %}
+
