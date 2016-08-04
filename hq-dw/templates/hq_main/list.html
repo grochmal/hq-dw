@@ -8,7 +8,7 @@ Item List
 
 {{ block.super }}
 
-<p>list</p>
+<h2>Item List</h2>
 <ul>
   {% for object in object_list %}
     <li><a href="{{ object.get_absolute_url }}">{{ object }}</a></li>

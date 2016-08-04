@@ -94,3 +94,13 @@ USE_TZ = True
 STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 
+# In batch jobs, how often do we commit records to the database
+HQ_DW_COMMIT_SIZE = 1024
+
+# Default price for a day in any hotel.  In a real world scenario we would have
+# the prices for the hotels.  But, since we do not have the hotel data, we just
+# calculate that if we do not match any offer we just give a price of number of
+# days times the following (in the default currency):
+HQ_DW_DAY_PRICE = 100
+HQ_DW_DEFAULT_CURRECNY = 'USD'
+
