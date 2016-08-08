@@ -11,7 +11,7 @@ from hq_hotel_mart import urls as hotel_mart_urls
 urlpatterns = [
     url(r'^admin/', admin.site.urls)
 ,   url(r'^stage/', include(stage_urls))
-,   url(r'^warehose/', include(warehouse_urls))
+,   url(r'^warehouse/', include(warehouse_urls))
 ,   url(r'', include(hotel_mart_urls))
 ]
 

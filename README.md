@@ -12,17 +12,17 @@ configuration.
 
 ## Table of Contents
 
-1.  [Installation](#install)
-    *   [Requirements](#install-req)
-    *   [Postgres configuration](#install-conf)
-    *   [Create database and user](#install-db)
-    *   [Virtual environment](#install-venv)
-    *   [Clone the warehouse configuration](#install-wh)
-    *   [Install dependencies](#install-deps)
-    *   [Install the warehouse packages](#install-pkg)
-    *   [Development system](#install-dev)
-    *   [Production environment variables](#install-prod)
-    *   [Extra notes on a reliable web server](#install-uwsgi)
+1.  [Installation](#installation)
+    *   [Requirements](#requirements)
+    *   [Postgres configuration](#postgres-configuration)
+    *   [Create database and user](#create-database-and-user)
+    *   [Virtual environment](#virtual-environment)
+    *   [Clone the warehouse configuration](#clone-warehouse-configuration)
+    *   [Install dependencies](#install-dependencies)
+    *   [Install the warehouse packages](#install-the-warehouse-packages)
+    *   [Development system](#development-system)
+    *   [Production environment variables](#production-environment-variables)
+    *   [Extra install notes](#extra-install-notes)
 2.  [Running the Warehouse](#run)
     *   [ETL process](#run-etl)
     *   [Mart API](#run-api)
@@ -44,12 +44,12 @@ configuration.
 6.  [Copying](#copy)
 
 
-## Installation  { #install }
+## Installation ##  { #installation }
 
 The warehouse works on top of other tools, the `RDMS` for a start, we have
 certain requirements before the installation can begin.
 
-### Requirements  { #install-req }
+### Requirements ###  { #requirements }
 
 We will need the following pieces of software before we can install and run the
 warehouse.  These are the basic (system) requirements, further packages will be
@@ -79,7 +79,7 @@ installed inside the virtual environment of the warehouse itself.
 
 [stov]: http://stackoverflow.com/questions/38292345/how-to-force-mkproject-virtualenvwrapper-to-use-python3-as-default/
 
-### Postgres configuration  { #install-conf }
+### Postgres configuration ###  { #postgres-configuration }
 
 First of all we need to install a database.  `Postgres` will be our choice,
 there are plethora of way of installing it (OS repositories, `Postgres` own
@@ -181,7 +181,7 @@ If you are only testing.  In a proper warehouse installation the database will
 need to be configured to start under `systemd` since we need it to start at
 system boot/restart.
 
-### Create database and user  { #install-db }
+### Create database and user ###  { #create-database-and-user }
 
 Once `postgres` is running create a `django` user with permissions to create
 databases.  This user will later create the databases needed.
@@ -193,7 +193,7 @@ Change the *'password'* to something hard to guess if the database can be
 accessed from outside.  You need to execute the command as the user `postgres`
 (you may need to `su` into the user again).
 
-### Virtual environment  { #install-venv }
+### Virtual environment ###  { #virtual-environment }
 
 Next we will create a virtual environment for the application.  A virtual
 environment allows us to install specific `python` packages without the need to
@@ -219,16 +219,16 @@ Everything else that we will be doing during the installation shall be inside
 the virtual environment, therefore remember to check your shell to ensure that
 you are inside it.
 
-### Clone the warehouse configuration  { #install-wh }
+### Clone warehouse configuration ###  { #clone-warehouse-configuration }
 
     git clone https://github.com/grochmal/hq-dw.git
     cd hq-dw
 
-### Install dependencies  { #install-deps }
+### Install dependencies ###  { #install-dependencies }
 
     pip -r requirements.txt
 
-### Install the warehouse packages  { #install-pkg }
+### Install the warehouse packages ###  { #install-the-wrehouse-packages }
 
     git clone https://github.com/grochmal/hq-stage.git
     cd hq-stage
@@ -249,18 +249,18 @@ If you need to alter the code (to try different things) use:
 
 Instead.
 
-### Development system  { #install-dev }
+### Development system ###  { #development-system }
 
     cd hq-dw
     export DJANGO_SETTINGS_MODULE=conf.dev
     python manage.py runserver
 
-### Production environment variables  { #install-prod }
+### Production environment variables ###  { #production-environment-variables }
 
     cd hq-dw
     python TODO.py
 
-### Extra notes on a reliable web server  { #install-uwsgi }
+### Extra install notes ###  { #extra-install-notes }
 
 A reliable system would need much more.  A reverse proxy and load balancer,
 akin of `nginx` and a real webserver, e.g. `uwsgi`.  TODO

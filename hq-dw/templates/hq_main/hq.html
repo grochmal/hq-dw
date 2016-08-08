@@ -38,6 +38,34 @@ label {
 .float {
   float : right;
 }
+.navbar a {
+  border-radius : 0.6em;
+  border : 1px solid #a3a3c5;
+  background-color : #a3a5c5;
+  text-decoration : none;
+  padding : 0.3em;
+  margin : 0.3em;
+}
+.navbar a:visited {
+  border-radius : 0.6em;
+  border : 1px solid #a3a3c5;
+  background-color : #a3a5c5;
+  text-decoration : none;
+  padding : 0.3em;
+  margin : 0.3em;
+}
+.navbar a:hover {
+  border-radius : 0.6em;
+  border : 1px solid #a3a2e5;
+  background-color : #a3a5e5;
+  text-decoration : none;
+  padding : 0.5em;
+  margin : 0.3em;
+}
+.navbar {
+  padding : 0.3em;
+  margin : 0.3em;
+}
 
 -->
 </style>
@@ -123,6 +151,60 @@ window.addEventListener('load', function(ev) {
 
 <div id="hq-logo" class="float">
 </div>
+
+<nav>
+<div class="navbar">
+  <a href="{% url 'hq_stage:doc' %}">
+    stage
+  </a>
+  <a href="{% url 'hq_stage:batch_list' %}">
+    stage : batches
+  </a>
+  <a href="{% url 'hq_stage:currency_list' %}">
+    stage : currencies
+  </a>
+  <a href="{% url 'hq_stage:exchange_list' %}">
+    stage : exchange rates
+  </a>
+  <a href="{% url 'hq_stage:offer_list' %}">
+    stage : offers
+  </a>
+</div>
+<div class="navbar">
+  <a href="{% url 'hq_warehouse:doc' %}">
+    warehouse
+  </a>
+  <a href="{% url 'hq_warehouse:currency_list' %}">
+    warehouse : currencies
+  </a>
+  <a href="{% url 'hq_warehouse:forex_list' %}">
+    warehouse : forex list
+  </a>
+  <a href="{% url 'hq_warehouse:valid_list' %}">
+    warehouse : valid offers
+  </a>
+  <a href="{% url 'hq_warehouse:invalid_list' %}">
+    warehouse : invalid offers
+  </a>
+</div>
+<div class="navbar">
+  <a href="{% url 'hq_hotel_mart:doc' %}">
+    data mart
+  </a>
+  <a href="{% url 'hq_hotel_mart:currency_list' %}">
+    data mart : currencies
+  </a>
+  <a href="{% url 'hq_hotel_mart:offer_list' %}">
+    data mart : offers
+  </a>
+  <a href="{% url 'hq_hotel_mart:hour_list' %}">
+    data mart : hours
+  </a>
+  <a href="{% url 'hq_hotel_mart:hotel_list' %}">
+    data mart : hotel offer per hour
+  </a>
+</div>
+</nav>
 
 {% endblock %}
 

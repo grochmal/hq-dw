@@ -101,6 +101,6 @@ HQ_DW_COMMIT_SIZE = 1024
 # the prices for the hotels.  But, since we do not have the hotel data, we just
 # calculate that if we do not match any offer we just give a price of number of
 # days times the following (in the default currency):
-HQ_DW_DAY_PRICE = 100
+HQ_DW_DAY_PRICE = 100.0
 HQ_DW_DEFAULT_CURRECNY = 'USD'
 
