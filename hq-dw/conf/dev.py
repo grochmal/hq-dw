@@ -2,7 +2,8 @@
 Settings for the development environment.
 
 These settings store database passwords in clear text.  Modify this file if the
-database server you're connecting to can be acessed from outside a NAT!
+database server you're connecting to can be accessed from outside a NAT, but do
+not submit password to a code repository!
 '''
 
 import os, sys
@@ -42,7 +43,7 @@ DATABASES = {
     ,   'PORT' : '5432'
     }
 ,   'hotel_mart': {
-        'NAME': 'dev_stage'
+        'NAME': 'dev_hotel_mart'
     ,   'ENGINE': 'django.db.backends.postgresql'
     ,   'USER': 'django'
     ,   'PASSWORD' : 'password'

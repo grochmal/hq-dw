@@ -80,7 +80,7 @@ DATABASES = {
     ,   'PORT' : '5432'
     }
 ,   'hotel_mart': {
-        'NAME': 'prod_stage'
+        'NAME': 'prod_hotel_mart'
     ,   'ENGINE': 'django.db.backends.postgresql'
     ,   'USER': env['HQ_DW_HOTEL_MART_NAME']
     ,   'PASSWORD' : env['HQ_DW_HOTEL_MART_PASS']

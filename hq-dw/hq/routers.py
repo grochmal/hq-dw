@@ -6,7 +6,7 @@ to the correct database aliases needs to be performed according to a mapping.
 In essence, each app have its own database in the current configuration.
 '''
 
-# settings is not a module, this won't work
+# settings is not a module, therefore this won't work
 # from django.conf.settings import DATABASE_MAPPING
 
 from django.conf import settings
@@ -15,9 +15,6 @@ DATABASE_MAPPING = settings.DATABASE_MAPPING
 class HqRouter(object):
     '''
     A Router that decides against which database a query happens.
-
-    Currently it reads the DATABASE_MAPPING variable above for the mappings but
-    it could be modified in another file and import the mappings from settings.
     '''
 
     def db_for_read(self, model, **hints):

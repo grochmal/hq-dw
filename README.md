@@ -9,47 +9,121 @@ behind an `ORM` (Object Relational Mapper).  It depends on the remaining
 database queries.  `hq-dw` glues together the three apps into a coherent
 configuration.
 
+People are better/fast at correcting than at answering an inquiry
+Godwin's Law (actually Ward Cunningham's Law)
+
 
 ## Table of Contents
 
-1.  [Installation](#installation)
-    *   [Requirements](#requirements)
-    *   [Postgres configuration](#postgres-configuration)
-    *   [Create database and user](#create-database-and-user)
-    *   [Virtual environment](#virtual-environment)
-    *   [Clone the warehouse configuration](#clone-warehouse-configuration)
-    *   [Install dependencies](#install-dependencies)
-    *   [Install the warehouse packages](#install-the-warehouse-packages)
-    *   [Development system](#development-system)
-    *   [Production environment variables](#production-environment-variables)
-    *   [Extra install notes](#extra-install-notes)
-2.  [Running the Warehouse](#run)
-    *   [ETL process](#run-etl)
-    *   [Mart API](#run-api)
-    *   [Extensions](#run-ext)
-3.  [Design](#design)
-    *   [Staging area](#desing-stage)
-    *   [Warehouse](#design-warehouse)
-    *   [Mart](#design-mart)
-4.  [Spreading Across Several Machines](#dist)
-    *   [Why would you like to distribute?](#dist-why)
-    *   [Example setup](#dist-example)
-    *   [What would you need to change](#dist-conf)
-5.  [Frequent Questions](#faq)
-    *   [Why do you use an ORM?](#faq-orm)
-    *   [But isn't an ORM slower than stored procedures?](#faq-slow-orm)
-    *   [Things are in memory, won't the system be out of memory?](#faq-mem)
-    *   [Why Django?](#faq-django)
-    *   [Would you use Django in production in a large warehouse?](#faq-prod)
-6.  [Copying](#copy)
+1.  |0x100| Installation
+    *   |0x101| Requirements
+    *   |0x102| Postgres configuration
+    *   |0x103| Create database and user
+    *   |0x104| Virtual environment
+    *   |0x105| Clone the warehouse configuration
+    *   |0x106| Install dependencies
+    *   |0x107| Install the warehouse packages
+    *   |0x108| Install the development system
+    *   |0x109| Production environment variables
+    *   |0x10a| Extra notes on a reliable web server
+2.  |0x200| Running the Warehouse
+    *   |0x201| ETL process
+    *   |0x202| Mart API
+    *   |0x203| Extensions
+3.  |0x300| Design
+    *   |0x301| Staging area
+    *   |0x302| Warehouse
+    *   |0x303| Mart
+4.  |0x400| Spreading Across Several Machines
+    *   |0x401| Why would you like to distribute?
+    *   |0x402| Example setup
+    *   |0x403| What would you need to change
+5.  |0x500| Frequent Questions
+    *   |0x501| Why do you use an ORM?
+    *   |0x502| But isn't an ORM slower than stored procedures?
+    *   |0x503| Things are in memory, won't the system be out of memory?
+    *   |0x504| Why Django?
+    *   |0x505| Would you use Django in production in a large warehouse?
+6.  |0x600| Copying
 
 
-## Installation ##  { #installation }
+## |0x100| Installation
 
 The warehouse works on top of other tools, the `RDMS` for a start, we have
 certain requirements before the installation can begin.
 
-### Requirements ###  { #requirements }
+### TL;DR
+
+Install
+
+*   postgres postgres-dev
+*   gcc
+*   python3
+*   vitualenv3
+*   git
+
+    $ su - postgres
+    $ psql
+    =# create user django with password 'password';
+    =# create database dev_auth with owner django encoding 'utf-8';
+    =# create database dev_stage with owner django encoding 'utf-8';
+    =# create database dev_warehouse with owner django encoding 'utf-8';
+    =# create database dev_hotel_mart with owner django encoding 'utf-8';
+
+    mkdir testhq
+    cd testhq
+    virtualenv3 venv-hq
+    source venv-hq/bin/activate
+    git clone https://github.com/grochmal/hq-dw.git
+    git clone https://github.com/grochmal/django-hq-stage.git
+    git clone https://github.com/grochmal/django-hq-warehouse.git
+    git clone https://github.com/grochmal/django-hq-hotel-mart.git
+    cd hq-dw
+    export DJANGO_SETTINGS_MODULE=conf.dev
+    export HQ_DW_CONF_PATH=`pwd`
+    pip install -r requirements.txt
+    cd ../django-hq-stage/
+    pip install -e .
+    cd ../django-hq-warehouse/
+    pip install -e .
+    cd ../django-hq-hotel-mart/
+    pip install -e .
+
+    # full environment <60MB
+    cd ../hq-dw/hq-dw/
+    python manage.py migrate --database default
+    python manage.py migrate --database stage
+    python manage.py migrate --database warehouse
+    python manage.py migrate --database hotel_mart
+    python manage.py runserver
+    # go to http://localhost:8000/
+
+    # new shell
+    cd testhq
+    source venv-hq/bin/activate
+    export DJANGO_SETTINGS_MODULE=conf.dev
+    export HQ_DW_CONF_PATH=`pwd`/hq-dw/hq-dw
+    mkdir data
+    cd data
+    wget -O hq-currency.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/lst_currency.csv
+    wget -O hq-forex.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/fx_rate.csv
+    wget -O hq-offer.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/offer.csv
+    hqs-load-table -f ./hq-currency.csv -t currency
+    hqs-load-table -b 1 -f ./hq-forex.csv -t exchange-rate
+    hqs-load-table -b 1 -f ./hq-offer.csv -t offer
+    hqw-checkout-batch -v -b 1
+    hqm-pop-hours -v -y 2016
+    hqm-reload -v
+
+    # test it
+    curl 'http://localhost:8000/api/?queryat=2016-06-07T11&hotelid=169&checkindate=2016-06-25&checkoutdate=2016-06-26'
+
+cd hq-dw
+export HQ_DW_CONF_PATH=`pwd`
+export export DJANGO_SETTINGS_MODULE=conf.dev
+python3 manage.py migrate
+
+### |0x101| Requirements
 
 We will need the following pieces of software before we can install and run the
 warehouse.  These are the basic (system) requirements, further packages will be
@@ -79,7 +153,7 @@ installed inside the virtual environment of the warehouse itself.
 
 [stov]: http://stackoverflow.com/questions/38292345/how-to-force-mkproject-virtualenvwrapper-to-use-python3-as-default/
 
-### Postgres configuration ###  { #postgres-configuration }
+### |0x102| Postgres configuration
 
 First of all we need to install a database.  `Postgres` will be our choice,
 there are plethora of way of installing it (OS repositories, `Postgres` own
@@ -181,7 +255,7 @@ If you are only testing.  In a proper warehouse installation the database will
 need to be configured to start under `systemd` since we need it to start at
 system boot/restart.
 
-### Create database and user ###  { #create-database-and-user }
+### |0x103| Create database and user
 
 Once `postgres` is running create a `django` user with permissions to create
 databases.  This user will later create the databases needed.
@@ -193,7 +267,7 @@ Change the *'password'* to something hard to guess if the database can be
 accessed from outside.  You need to execute the command as the user `postgres`
 (you may need to `su` into the user again).
 
-### Virtual environment ###  { #virtual-environment }
+### |0x104| Virtual environment
 
 Next we will create a virtual environment for the application.  A virtual
 environment allows us to install specific `python` packages without the need to
@@ -219,16 +293,16 @@ Everything else that we will be doing during the installation shall be inside
 the virtual environment, therefore remember to check your shell to ensure that
 you are inside it.
 
-### Clone warehouse configuration ###  { #clone-warehouse-configuration }
+### |0x105| Clone warehouse configuration
 
     git clone https://github.com/grochmal/hq-dw.git
     cd hq-dw
 
-### Install dependencies ###  { #install-dependencies }
+### |0x106| Install dependencies
 
     pip -r requirements.txt
 
-### Install the warehouse packages ###  { #install-the-wrehouse-packages }
+### |0x107| Install the warehouse packages
 
     git clone https://github.com/grochmal/hq-stage.git
     cd hq-stage
@@ -249,38 +323,56 @@ If you need to alter the code (to try different things) use:
 
 Instead.
 
-### Development system ###  { #development-system }
+### |0x108| Install the development system
 
     cd hq-dw
     export DJANGO_SETTINGS_MODULE=conf.dev
     python manage.py runserver
 
-### Production environment variables ###  { #production-environment-variables }
+### |0x109| Production environment variables
 
     cd hq-dw
     python TODO.py
 
-### Extra install notes ###  { #extra-install-notes }
+### |0x10a| Extra notes on a reliable web server
+
+TODO:
+
+config
+
+In batch jobs, how often do we commit records to the database
+
+    HQ_DW_COMMIT_SIZE = 1024
+
+Default price for a day in any hotel.  In a real world scenario we would have
+the prices for the hotels.  But, since we do not have the hotel data, we just
+calculate that if we do not match any offer we just give a price of number of
+days times the following (in the default currency):
+
+    HQ_DW_DAY_PRICE = 100.0
+    HQ_DW_DEFAULT_CURRECNY = 'USD'
+
+
 
 A reliable system would need much more.  A reverse proxy and load balancer,
 akin of `nginx` and a real webserver, e.g. `uwsgi`.  TODO
 
 
-## Running the Warehouse  { #run }
+## |0x200| Running the Warehouse
 
 TODO
 
-### ETL process  { #run-etl }
+### |0x201| ETL process
 
     /path/to/script/extract-data.sh
     /path/to/script/load-data.sh
 
-### Mart API { #run-api }
+### |0x202| Mart API
 
     /path/to/script/load-mart.sh
     python3 manage.py runserver
 
-### Extensions  { #run-ext }
+### |0x203| Extensions
 
 The error fixing in the stage area can be vastly improved.  An HTTP interface
 for loading data into batches would be very useful too.
@@ -288,7 +380,7 @@ for loading data into batches would be very useful too.
 The webserver definitely must not be run with Django's basic webserver.
 
 
-## Design  { #design }
+## |0x300| Design
 
 The first rule of data warehousing is: No matter how well behaved your data
 sources are, someone at some point will send you rubbish, be prepared to
@@ -307,7 +399,7 @@ A data warehouse is divided into at least three pieces:
 Now let's see how the HQ specific warehouse divides its work across the three
 parts.
 
-### Staging area  { #design-stage }
+### |0x301| Staging area
 
 For each data source a table is created and all columns are set to
 VARCHAR(255).  If a piece of data has more than 255 character it is not the
@@ -339,7 +431,7 @@ are not needed since we never insert into the same table twice.  But the
 setting of all columns to VARCHAR(255) allows us to catch several errors
 without the need to review the input files.
 
-### Warehouse  { #design-warehouse }
+### |0x302| Warehouse
 
 The focus in the warehouse design is on *facts* and *dimensions*, yet, in the HQ
 warehouse, that has already been done for us.  Another important detail is
@@ -359,37 +451,37 @@ The retrieval procedure shall only accept row in the staging area that are
 correct and can build correct rows in the warehouse, all incorrect rows are
 marked as such in the staging area and never reach the warehouse.
 
-### Data Mart  { #design-mart }
+### |0x303| Data Mart
 
 The data mart is populated from the warehouse, therefore we can assume that 
 TODO
 
 
-## Spreading across several machines { #distributed }
+## |0x400| Spreading across several machines
 
 TODO
 
-### Why would you like to distribute?  { #dist-why }
+### |0x401| Why would you like to distribute?
 
 The warehouse became too big to run on a single machine.
 
-### Example setup  { #dist-example }
+### |0x402| Example setup
 
 `uwsgi` is really needed here.
 
-### What would you need to change  { #dist-conf }
+### |0x403| What would you need to change
 
 Three different database servers.  TODO
 
 
-## Frequent Questions  { #faq }
+## |0x500| Frequent Questions
 
 A FAQ is a list of questions and answers that allow for the explanation of
 specific decisions that would be difficult to fit in any other section.  The
 following list is an excerpt of decisions about technologies used and reasons
 why I digressed from the original proposal:
 
-### Why do you use an ORM?  { #faq-orm }
+### |0x501| Why do you use an ORM?
 
 I saw too many data warehouses that were impossible to debug.  Since stored
 procedures are very quick using them to perform the load of data from the stage
@@ -425,7 +517,7 @@ Moreover, an `ORM` can cleanly communicate and work with different instances of
 a database, one thing that stored procedures cannot do.  Stored procedures are
 limited to the database instance they're stored in.
 
-### But isn't an ORM slower than stored procedures?  { #faq-slow-orm }
+### |0x502| But isn't an ORM slower than stored procedures?
 
 At first sight *yes*.  An `ORM` will read data into memory and, only after
 processing it, it will write it back to disk.  Loading the data into memory may
@@ -438,7 +530,7 @@ instance of a database.  Therefore the overhead of sending the data through the
 network and keeping it in memory during the processing is just the same with
 stored procedures once a data warehouse grows.
 
-### Things are in memory, won't the system be out of memory?  { #faq-mem }
+### |0x503| Things are in memory, won't the system be out of memory?
 
 If you code things badly *yes*.  The division between *facts* and *dimensions*
 is very important when constructing the warehouse, even more important if the
@@ -461,16 +553,16 @@ the `ORM` *facts* in the database.  And doing it correctly will both: not
 leave the system where the `ORM` is running out of memory, and make a better us
 of database cache.
 
-### Why Django?  { #faq-django }
+### |0x504| Why Django?
 
 TODO
 
-### Would you use Django in production in a large warehouse?  { #faq-prod }
+### |0x505| Would you use Django in production in a large warehouse?
 
 Probably not.
 
 
-## Copying  { #copy }
+## |0x600| Copying
 
 Copyright (C) 2016 Michal Grochmal
 
