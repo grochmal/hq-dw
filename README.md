@@ -16,16 +16,17 @@ Godwin's Law (actually Ward Cunningham's Law)
 ## Table of Contents
 
 1.  |0x100| Installation
-    *   |0x101| Requirements
-    *   |0x102| Postgres configuration
-    *   |0x103| Create database and user
-    *   |0x104| Virtual environment
-    *   |0x105| Clone the warehouse configuration
-    *   |0x106| Install dependencies
-    *   |0x107| Install the warehouse packages
-    *   |0x108| Install the development system
-    *   |0x109| Production environment variables
-    *   |0x10a| Extra notes on a reliable web server
+    *   |0x101| Quick Start (TL;DR)
+    *   |0x102| Requirements
+    *   |0x103| Postgres configuration
+    *   |0x104| Create database and user
+    *   |0x105| Virtual environment
+    *   |0x106| Clone the warehouse configuration
+    *   |0x107| Install dependencies
+    *   |0x108| Install the warehouse packages
+    *   |0x109| Install the development system
+    *   |0x10a| Production environment variables
+    *   |0x10b| Extra notes on a reliable web server
 2.  |0x200| Running the Warehouse
     *   |0x201| ETL process
     *   |0x202| Mart API
@@ -39,28 +40,52 @@ Godwin's Law (actually Ward Cunningham's Law)
     *   |0x402| Example setup
     *   |0x403| What would you need to change
 5.  |0x500| Frequent Questions
-    *   |0x501| Why do you use an ORM?
-    *   |0x502| But isn't an ORM slower than stored procedures?
-    *   |0x503| Things are in memory, won't the system be out of memory?
-    *   |0x504| Why Django?
-    *   |0x505| Would you use Django in production in a large warehouse?
+    *   |0x501| I expected to see SQL and got a Web Framework, what gives?
+    *   |0x502| OK, but why do you use an ORM?
+    *   |0x503| But isn't an ORM slower than stored procedures?
+    *   |0x504| Things are in memory, won't the system be out of memory?
+    *   |0x505| Why Django?
+    *   |0x506| Would you use Django in production in a large warehouse?
+    *   |0x507| I do not know Django, how do it check the DB optimisation?
+    *   |0x508| Why do you believe that optimisation by caching is better?
+    *   |0x509| 
 6.  |0x600| Copying
 
 
 ## |0x100| Installation
 
 The warehouse works on top of other tools, the `RDMS` for a start, we have
-certain requirements before the installation can begin.
+certain requirements before the installation can begin.  We will need a working
+`postgres` database and a working `python3` environment.  Best effort has been
+performed to try to make the code database and operating system agnostic, but
+it has only been tested with `postgres` and `sqlite` and only on Linux (`Arch`
+and `CentOS`).
 
-### TL;DR
+Note that, if you are going to use it on a new virtual machine, the code is
+much easier to install on an OS that uses `python3` as the default python.
+Arch Linux (and all its forks), Fedora, Gentoo, and Ubuntu (I believe) are the
+distros that use `python3` by default (but consider *not* using Ubuntu, since
+it places things in non-standard places and I cannot be bothered to test that).
+Distros that use `python2` by default will require a couple of tricks to create
+`python3` virtual environments: If you must use such a distro you may wish to
+use `pip3` to install `virtualenv` and then manually softlink the created
+script to `virtualenv3`.
 
-Install
+### |0x101| Quick Start (TL;DR)
 
-*   postgres postgres-dev
-*   gcc
-*   python3
-*   vitualenv3
-*   git
+A full explanation of the install procedure will follow later.  Just note that
+`python3` and `pip3` may be named just `python` and `pip` on distros that use
+`python3` by default (that is the case with Arch Linux).
+
+Install:
+
+*   `postgres` and `postgres-dev` with your package manager.
+*   `gcc` with you package manager.
+*   `python3` and `pip3` with your package manager.
+*   `vitualenv3` with your package manager or using `pip3`.
+*   `git` with you package manager.
+
+Create a couple of databases that will hold the data:
 
     $ su - postgres
     $ psql
@@ -70,6 +95,8 @@ Install
     =# create database dev_warehouse with owner django encoding 'utf-8';
     =# create database dev_hotel_mart with owner django encoding 'utf-8';
 
+Install the warehouse packages (as any user you want, not `root` please):
+
     mkdir testhq
     cd testhq
     virtualenv3 venv-hq
@@ -78,18 +105,21 @@ Install
     git clone https://github.com/grochmal/django-hq-stage.git
     git clone https://github.com/grochmal/django-hq-warehouse.git
     git clone https://github.com/grochmal/django-hq-hotel-mart.git
-    cd hq-dw
+    cd hq-dw/hq-dw
     export DJANGO_SETTINGS_MODULE=conf.dev
     export HQ_DW_CONF_PATH=`pwd`
     pip install -r requirements.txt
-    cd ../django-hq-stage/
+    cd ../../django-hq-stage/
     pip install -e .
     cd ../django-hq-warehouse/
     pip install -e .
     cd ../django-hq-hotel-mart/
     pip install -e .
 
-    # full environment <60MB
+The full code (including the dependencies) uses about 60MBs of disk space.
+Next, start the development webserver (we will talk about a production
+webserver later):
+
     cd ../hq-dw/hq-dw/
     python manage.py migrate --database default
     python manage.py migrate --database stage
@@ -98,7 +128,10 @@ Install
     python manage.py runserver
     # go to http://localhost:8000/
 
-    # new shell
+Leave the development server running in the shell and open a new one.  We will
+need to enter the virtual environment once again, and we will get the files to
+load.
+
     cd testhq
     source venv-hq/bin/activate
     export DJANGO_SETTINGS_MODULE=conf.dev
@@ -108,6 +141,11 @@ Install
     wget -O hq-currency.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/lst_currency.csv
     wget -O hq-forex.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/fx_rate.csv
     wget -O hq-offer.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/offer.csv
+
+Finally, run the warehouse scripts (which should be in the PATH inside the
+virtual environment) to ETL the data all the way to the mart.  This procedure
+takes a considerable amount of time:
+
     hqs-load-table -f ./hq-currency.csv -t currency
     hqs-load-table -b 1 -f ./hq-forex.csv -t exchange-rate
     hqs-load-table -b 1 -f ./hq-offer.csv -t offer
@@ -115,15 +153,16 @@ Install
     hqm-pop-hours -v -y 2016
     hqm-reload -v
 
-    # test it
-    curl 'http://localhost:8000/api/?queryat=2016-06-07T11&hotelid=169&checkindate=2016-06-25&checkoutdate=2016-06-26'
+Test the `API` endpoint.  The endpoint uses HTTP codes as error indicators
+therefore use curl's `-i` to print the HTTP headers of the response.
 
-cd hq-dw
-export HQ_DW_CONF_PATH=`pwd`
-export export DJANGO_SETTINGS_MODULE=conf.dev
-python3 manage.py migrate
+    curl -i 'http://localhost:8000/api/?queryat=2016-06-07T11&hotelid=169&checkindate=2016-06-25&checkoutdate=2016-06-26'
 
-### |0x101| Requirements
+I have developed and tested the code on Arch Linux, using the most recent
+packages available on that OS.  The above should work on that distro, yet to
+understand possible quirks with the installation please read forward.
+
+### |0x102| Requirements
 
 We will need the following pieces of software before we can install and run the
 warehouse.  These are the basic (system) requirements, further packages will be
@@ -134,28 +173,28 @@ installed inside the virtual environment of the warehouse itself.
 
 *   `Postgres headers` - On some operating systems the development headers are
     included in a different package (e.g. `postgres-dev` on Debian based
-    distros).  The headers are needed to compile the python bindings.
+distros).  The headers are needed to compile the python bindings.
 
 *   `gcc` and `make` - We will compile the `python` bindings for the `postgres`
     database, we need these two to perform this.
 
 *   `Python 3` - We will use `python3`, the newest version of `python` since it
     deals with `utf-8` better than `python2`.  This may not be the default
-    version of python on your distro.
+version of python on your distro.
 
 *   `virtualenv3` - A python virtual environment for `python3`, not for
     `python2`.  This is often packaged as a separate package by distros, i.e.
-    there is one package for `virtualenv2` and one for `virtualenv3`.  OSX has
-    no `virtualenv3` equivalent see my [my answer on stack overflow][stov] for
-    a workaround on OSX.
+there is one package for `virtualenv2` and one for `virtualenv3`.  OSX has no
+`virtualenv3` equivalent see my [answer on stack overflow][stov] for a
+workaround on OSX.
 
 *   `git` - To clone the warehouse pieces from `github`.
 
 [stov]: http://stackoverflow.com/questions/38292345/how-to-force-mkproject-virtualenvwrapper-to-use-python3-as-default/
 
-### |0x102| Postgres configuration
+### |0x103| Postgres configuration
 
-First of all we need to install a database.  `Postgres` will be our choice,
+First of all we need to install an `RDBMS`.  And `Postgres` is our choice,
 there are plethora of way of installing it (OS repositories, `Postgres` own
 repositories, compiling from source, etc.) therefore we will not go into detail
 on this.  Instead we will make a couple of assumptions about the installation
@@ -164,9 +203,9 @@ installation.  We will assume that:
 
 *   `PGROOT` is `/var/lib/postgres)`.
 
-*   `Postgres` run as the user `postgres` and group `postgres`.
+*   `Postgres` runs as the user `postgres` and group `postgres`.
 
-*   We start `postgres` with:
+*   We start `postgres` with (or an equivalent command):
 
         /usr/bin/pg_ctl -w -t 120 -D /var/lib/postgres/data start
 
@@ -174,15 +213,16 @@ installation.  We will assume that:
 
 *   We use `systemd` to start `postgres` at boot time.
 
-*   We use `rsyslog` as the *Syslog* utility.
+*   We use `rsyslog` as the *Syslog* utility (this is only needed for a
+    production environment).
 
 A `postgres` database needs to be initialised before it can run.  If you
-already have a `postgres` instance running you can ignore this section but at
-least skim the configuration example below to check whether you may want to
-check some configuration parameters on your instance.
+already have a `postgres` instance running you can safely ignore this section.
+Yet, you may want to at least skim the configuration example below to check
+whether you may want to change some configuration parameters on your instance.
 
 Change into the `postgres` user (this is normally accomplished by `su -
-postgres` as root, but configurations vary) and execute:
+postgres` (often as root, but configurations vary) and execute:
 
     initdb --locale en_GB.UTF-8 -E UTF-8 -D /var/lib/postgres/data
 
@@ -205,11 +245,12 @@ warehouse.  We update `/var/lib/postgres/data/postgresql.conf` with:
     track_counts = on
 
     # We can pump up the memory for buffers and caches
+    # (give more on bigger machines)
     shared_buffers = 64MB
     work_mem = 16MB
     maintenance_work_mem = 32MB
 
-    # Vacuum shall will be less needed thanks to the fact that there are almost
+    # Vacuum shall less needed thanks to the fact that there are almost
     # no updates but more needed since we have bigger caches.  Increase its
     # cost but also increase the number of workers.
     vacuum_cost_delay = 20ms
@@ -239,11 +280,8 @@ warehouse.  We update `/var/lib/postgres/data/postgresql.conf` with:
     lc_time = 'en_US.UTF-8'
     datestyle = 'iso, dmy'
 
-You can leave the `postgres` user environment now (or just leave the shell open
-since we will need that use again).
-
-Most ditros today use `systemd` therefore starting `postgres` shall be done
-with:
+Most distros today use `systemd` therefore starting `postgres` shall be done
+with (as root):
 
     systemctl start postgres.service
 
@@ -251,58 +289,129 @@ But feel free to start it with:
 
     /usr/bin/pg_ctl -w -t 120 -D /var/lib/postgres/data start
 
-If you are only testing.  In a proper warehouse installation the database will
-need to be configured to start under `systemd` since we need it to start at
-system boot/restart.
+If you are only testing.  In a proper warehouse installation the database shall
+configured to start under `systemd` since we want it to start at system
+boot/restart.
 
-### |0x103| Create database and user
+### |0x104| Create database and user
 
-Once `postgres` is running create a `django` user with permissions to create
-databases.  This user will later create the databases needed.
+Once `postgres` is running create a `django` user (or some user name that you
+feel more comfortable with, but you will need to change the warehouse
+configuration to use that user).  Also create the databases that will be used
+by the warehouse (yes, there are several of them):
 
     $ psql
-    postgres=# create user django with createdb password 'password';
+    =# create user django with createdb password 'password';
+    =# create user django with password 'password';
+    =# create database dev_auth with owner django encoding 'utf-8';
+    =# create database dev_stage with owner django encoding 'utf-8';
+    =# create database dev_warehouse with owner django encoding 'utf-8';
+    =# create database dev_hotel_mart with owner django encoding 'utf-8';
 
 Change the *'password'* to something hard to guess if the database can be
 accessed from outside.  You need to execute the command as the user `postgres`
-(you may need to `su` into the user again).
+(you may need to `su` into the user again).  If you change the password, you
+*will* need to change the warehouse configuration to use the new password.
 
-### |0x104| Virtual environment
+You can now leave the `postgres` user environment now.
+
+### |0x105| Virtual environment
 
 Next we will create a virtual environment for the application.  A virtual
 environment allows us to install specific `python` packages without the need to
-change the current system-wide `python` installation.  Moreover everything ina
+change the current system-wide `python` installation.  Moreover everything in a
 virtual environment can be executed as a normal user, no need to be root to
-install things (much safer).  Choose a user (that is not root), select a
-directory (we will assume `~/warehouse`) and from inside it run:
+install things (much safer).
+
+Choose a user to install the warehouse as (a user that preferably is not root),
+select a directory (we will assume `~/warehouse`) and from inside it run:
 
     virtualenv3 venv
 
-This creates a virtual environment (for `python3`) in `~/warehouse/vnev`.  Next
+There are some quirks with python virtual environment thanks to the
+incompatibilities between `python2` and `python3`.  I strongly recommend using
+a distro that uses `python3` as the default `python`, in which case you can use
+`virtualenv` instead of `virtualenv3`.  Yet, if your distro does not use
+`python3` by default you will need to install `virtualenv` though `pip3`, and
+then make sure that the `python3` interpreter is used to run the `virtualenv`
+script.  For example instead of:
+
+    virtualenv3 env
+
+You will need to perform:
+
+    python3 `which virtualenv` env
+
+Once we have a virtual environment (for `python3`) in `~/warehouse/vnev`.  Next
 we need to switch to that environment:
 
     source ~/warehouse/venv/bin/activate
 
-This alters the paths for `python` binaries and libraries, and also the `PS1`
-environment variable to remind you that you are in a virtual environment.  Your
-shell shall look along the lines of:
+This alters the paths for `python` binaries and libraries, and also sets the
+`PS1` environment variable to remind you that you are in a virtual environment.
+Your shell shall look along the lines of:
 
     (venv) [me@machine] $
 
-Everything else that we will be doing during the installation shall be inside
-the virtual environment, therefore remember to check your shell to ensure that
-you are inside it.
+Everything else that we will be doing during the installation shall be from
+inside the virtual environment, therefore remember to check your shell to
+ensure that you are inside it.
 
-### |0x105| Clone warehouse configuration
+### |0x106| Clone warehouse configuration
+
+Assuming we are inside `~/warehouse` let us get the warehouse configuration
+from `github` and go in there:
 
     git clone https://github.com/grochmal/hq-dw.git
-    cd hq-dw
+    cd hq-dw/hq-dw
 
-### |0x106| Install dependencies
+The `conf` directory contains the configuration and it has a hierarchy as
+follows:
+
+    base.py
+    |
+    +-- dev.py
+    |   |
+    |   +--dev_sqlite.py
+    |
+    +-- prod.py
+
+That means that `dev.py` inherits all settings from `base.py` and
+`dev_sqlite.py` inherits from `dev.py` and also from `base.py`.  Either
+`dev.py`, `dev_sqlite.py` or `prod.py` can be used as full configuration files
+(`base.py` cannot be used).
+
+For a basic install we will use `dev.py`.  We will discuss how to transform the
+development install into a production ready warehouse later.  Let us export a
+couple of environment variables so that other packages will be able to find our
+configuration.  Assuming that we are inside `~/warehouse/hq-dw//hqdw`, perform:
+
+    export DJANGO_SETTINGS_MODULE=conf.dev
+    export HQ_DW_CONF_PATH=`pwd`
+
+Note: If you are using a different postgres user than `django` and/or a
+different password, edit `conf/dev.py`.  The lines that need to be edited shall
+be self explanative.
+
+### |0x107| Install dependencies
+
+The warehouse depends on a couple of third party packages, which we will need
+to install inside the virtual environment.  One of the requirements is
+`psycopg2` (python bindings for the postgres database), we will need `gcc` and
+headers for the postgres database to be used.
+
+Assuming that we are at `~/warehouse/hq-dw` we need to perform:
 
     pip -r requirements.txt
 
-### |0x107| Install the warehouse packages
+Make sure that you are inside the virtual environment, otherwise it will
+complain that it cannot install the packages into `/usr/` (and we do not want
+to dirty our OS).
+
+### |0x108| Install the warehouse packages
+
+Now that we have all requirements and configuration lets install the warehouse
+packages.
 
     git clone https://github.com/grochmal/hq-stage.git
     cd hq-stage
@@ -323,18 +432,41 @@ If you need to alter the code (to try different things) use:
 
 Instead.
 
-### |0x108| Install the development system
+### |0x109| Install the development system
 
     cd hq-dw
     export DJANGO_SETTINGS_MODULE=conf.dev
     python manage.py runserver
+    cd ../hq-dw/hq-dw/
+    python manage.py migrate --database default
+    python manage.py migrate --database stage
+    python manage.py migrate --database warehouse
+    python manage.py migrate --database hotel_mart
+    python manage.py runserver
+    # go to http://localhost:8000/
 
-### |0x109| Production environment variables
+This is as far as you need to go to test the warehouse.  The two following
+sections are a discussion of configuration options that may be used for a
+production system.
+
+### |0x10a| Production environment variables
+
+To build a production system we need several other pieces of software.  For a
+start the webserver that comes with `Django` is not fast enough or reliable
+enough for a production environment.  We are also using default passwords, and
+these passwords are available at `github` for anyone to see.  That's all pretty
+bad.
+
+How you deploy your production system is up to you (the next section discusses
+one possible scenario).  Yet, how to change the default passwords, and not
+include them in clear text in files you may submit to a code repository can be
+done as using environment variables.  For an example `conf/prod.py` is
+included, using that file 
 
     cd hq-dw
     python TODO.py
 
-### |0x10a| Extra notes on a reliable web server
+### |0x10b| Extra notes on a reliable web server
 
 TODO:
 
@@ -364,11 +496,15 @@ TODO
 
 ### |0x201| ETL process
 
+    https://github.com/grochmal/django-hq-stage
+    https://github.com/grochmal/django-hq-warehouse
+
     /path/to/script/extract-data.sh
     /path/to/script/load-data.sh
 
 ### |0x202| Mart API
 
+    https://github.com/grochmal/django-hq-hotel-mart
     /path/to/script/load-mart.sh
     python3 manage.py runserver
 
@@ -481,7 +617,11 @@ specific decisions that would be difficult to fit in any other section.  The
 following list is an excerpt of decisions about technologies used and reasons
 why I digressed from the original proposal:
 
-### |0x501| Why do you use an ORM?
+### |0x501| I expected to see SQL and got a Web Framework, what gives?
+
+TODO
+
+### |0x502| OK, but why do you use an ORM?
 
 I saw too many data warehouses that were impossible to debug.  Since stored
 procedures are very quick using them to perform the load of data from the stage
@@ -517,7 +657,7 @@ Moreover, an `ORM` can cleanly communicate and work with different instances of
 a database, one thing that stored procedures cannot do.  Stored procedures are
 limited to the database instance they're stored in.
 
-### |0x502| But isn't an ORM slower than stored procedures?
+### |0x503| But isn't an ORM slower than stored procedures?
 
 At first sight *yes*.  An `ORM` will read data into memory and, only after
 processing it, it will write it back to disk.  Loading the data into memory may
@@ -530,7 +670,7 @@ instance of a database.  Therefore the overhead of sending the data through the
 network and keeping it in memory during the processing is just the same with
 stored procedures once a data warehouse grows.
 
-### |0x503| Things are in memory, won't the system be out of memory?
+### |0x504| Things are in memory, won't the system be out of memory?
 
 If you code things badly *yes*.  The division between *facts* and *dimensions*
 is very important when constructing the warehouse, even more important if the
@@ -553,11 +693,11 @@ the `ORM` *facts* in the database.  And doing it correctly will both: not
 leave the system where the `ORM` is running out of memory, and make a better us
 of database cache.
 
-### |0x504| Why Django?
+### |0x505| Why Django?
 
 TODO
 
-### |0x505| Would you use Django in production in a large warehouse?
+### |0x506| Would you use Django in production in a large warehouse?
 
 Probably not.
 
