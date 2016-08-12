@@ -9,8 +9,69 @@ behind an `ORM` (Object Relational Mapper).  It depends on the remaining
 database queries.  `hq-dw` glues together the three apps into a coherent
 configuration.
 
-People are better/fast at correcting than at answering an inquiry
-Godwin's Law (actually Ward Cunningham's Law)
+The final warehouse is quite different from the assignment at [bi-dev][bidev].
+There are a couple of reasons for it.  First of all this is the first time I
+could make *all* design decisions for a warehouse, and I always wanted to try
+building a warehouse purely through an ORM.  Therefore I have spent much more
+time on this than one would expect.  In a certain way, after seeing a lot of
+bad warehouse designs, I just wanted to check is such a warehouse design
+(through an ORM) will work out.  And I'm quite pleased with the result.
+
+[bdev]: https://github.com/HQInterview/BI-developer
+
+A second reason for why the warehouse looks as it does is that we have 6 hours
+of difference between London and Bangkok.  In such conditions I preferred to
+follow Godwin's Law (see note below) and make all decisions myself.  Some key
+differences are:
+
+*   The staging are loads the data from the CSV files as if they could be
+    dirty.  This follows a more real world scenario where we cannot ever be
+sure if a data provider will not send complete garbage.
+
+*   The staging area and the warehouse are different databases, not schemas.
+    This allows for distributing the warehouse better, and possbily configure
+both databases in different ways.
+
+*   The API endpoint is made against a data mart.  And the data mart is in yet
+    another database.   The data mart can be reloaded out of the warehouse to
+contain only fresh data (making the queries faster).
+
+*   The API endpoint require an extra argument, the time of the query.  This is
+    needed because most of the data we have is for 2015.  Rather than making
+the query based on the current date and time we allow for queries that happened
+in the past.  In a real world scenario we should match against the time the
+query is made against the system but that is not possible with historical data.
+
+*   The warehouse tries to make up for missing data with several heuristics.
+    For example, we match foreign exchanges that we cannot find for a certain
+date against the most recent foreign exchanges for the given currencies.  We
+also try to match hotel offers based on the duration of stay if we cannot
+exactly match check-in and check-out dates.
+
+*   There is one extra API, an API to load data into the staging area.  It
+    probably does not work since I have not tested it, but it is a good feature
+to have.
+
+*   There is a web interface to all records in all databases.  This allows for
+    checking the correctness of rows easier and quicker than writing SQL.
+
+*   A web interface to the staging area allows to update records, notably
+    records that were marked as erroneous during data cleansing.  The actual
+form submit button is not provided (but trivial to add) since I'm hosting this
+code on a server that uses no authentication at all.
+
+*   The ETL process is much more strict.  We do not first load the data from
+    the staging area into the warehouse and then check for errors.  We try to
+find all errors during the loading and never add erroneous record to the
+warehouse.  The checking code is also much simpler in python than it would be
+in SQL.
+
+Note: Godwin's Law (actually Ward Cunningham's Law) says that people are
+better and faster at correcting than at answering an inquiry.  In other words,
+asking a question is less effective than providing a wrong answer.  Therefore I
+just went and made decisions and assumptions as I went through the coding.  In
+general the code has a lot of documentation strings and comments explaining
+quirky parts.  See also the FAQ on how to understand Django code.
 
 
 ## Table of Contents
@@ -25,8 +86,9 @@ Godwin's Law (actually Ward Cunningham's Law)
     *   |0x107| Install dependencies
     *   |0x108| Install the warehouse packages
     *   |0x109| Install the development system
-    *   |0x10a| Production environment variables
-    *   |0x10b| Extra notes on a reliable web server
+    *   |0x10a| Configuration
+    *   |0x10b| Production environment variables
+    *   |0x10c| Extra notes on a reliable web server
 2.  |0x200| Running the Warehouse
     *   |0x201| ETL process
     *   |0x202| Mart API
@@ -39,7 +101,7 @@ Godwin's Law (actually Ward Cunningham's Law)
     *   |0x401| Why would you like to distribute?
     *   |0x402| Example setup
     *   |0x403| What would you need to change
-5.  |0x500| Frequent Questions
+5.  |0x500| Frequent Questions (FAQ)
     *   |0x501| I expected to see SQL and got a Web Framework, what gives?
     *   |0x502| OK, but why do you use an ORM?
     *   |0x503| But isn't an ORM slower than stored procedures?
@@ -48,7 +110,7 @@ Godwin's Law (actually Ward Cunningham's Law)
     *   |0x506| Would you use Django in production in a large warehouse?
     *   |0x507| I do not know Django, how do it check the DB optimisation?
     *   |0x508| Why do you believe that optimisation by caching is better?
-    *   |0x509| 
+    *   |0x509| There are a lot of quirks with python 3, why did you use it?
 6.  |0x600| Copying
 
 
@@ -410,46 +472,110 @@ to dirty our OS).
 
 ### |0x108| Install the warehouse packages
 
-Now that we have all requirements and configuration lets install the warehouse
-packages.
+Now that we have all requirements and configuration let's install the warehouse
+packages.  Each repository contains a python package that can be installed with
+`pip` (or with `easy_install`).  Make sure you are inside the virtual
+environment, then, assuming you are in `~/warehouse`, perform:
 
     git clone https://github.com/grochmal/hq-stage.git
     cd hq-stage
     pip install .
+
     cd ..
     git clone https://github.com/grochmal/hq-warehouse.git
     cd hq-warehouse
     pip install .
+
     cd ..
     git clone https://github.com/grochmal/hq-mart.git
     cd hq-mart
     pip install .
     cd ..
 
-If you need to alter the code (to try different things) use:
+A clever trick with `pip` is that it can install softlinks instead of the
+actual files into the virtual environment.  This way if something goes wrong
+you can change the code directly in the repository (i.e. you do not need to
+search where the code was installed).  To achieve this use:
 
     pip install -e .
 
-Instead.
+Instead of
+
+    pip install .
+
+The editable package option is acceptable for a development environment.  In
+production it is discouraged since it makes the code load slightly slower.
 
 ### |0x109| Install the development system
 
-    cd hq-dw
-    export DJANGO_SETTINGS_MODULE=conf.dev
-    python manage.py runserver
-    cd ../hq-dw/hq-dw/
+We have the databases configured the warehouse installed and now we only need
+to create the schemas in the databases.  Make sure you are in the virtual
+environment and that `DJANGO_SETTINGS_MODULE` is set to `conf.dev`, then,
+assuming that you are at `~/warehouse` perform:
+
+    cd hq-dw/hq-dw/
     python manage.py migrate --database default
     python manage.py migrate --database stage
     python manage.py migrate --database warehouse
     python manage.py migrate --database hotel_mart
+
+That will build the correct tables and indexes in each database.  Now we can
+run the webserver and enjoy our installed warehouse.  From the same environment
+do:
+
     python manage.py runserver
-    # go to http://localhost:8000/
 
-This is as far as you need to go to test the warehouse.  The two following
-sections are a discussion of configuration options that may be used for a
-production system.
+And it will run a development server at http://localhost:8000 , where you shall
+go next.  The development server will block the shell session, a more suitable
+webserver that can be used in production is discussed in the next sessions.
+Leave the development server running or remember how to start it for when it is
+needed.  The webserver does not need to be running to run the ETL process, yet
+it must be started from the python virtual environment.
 
-### |0x10a| Production environment variables
+This is as far as you need to go to install a test warehouse.  The two
+following sections are a discussion of configuration options that may be used
+for a production system.  But wait all tables are still empty!  To actually run
+the ETL process jump forward to the *Running the Warehouse* section.
+
+### |0x10a| Configuration
+
+The development warehouse is pre-configured, yet several configuration
+parameters can be changed to suit needs.  First of all, the warehouse uses four
+different databases:
+
+*   `default`: Contains the authentication information and `Django` session
+    management.
+
+*   `stage`: The staging area of the warehouse, contains dirty data (containing
+    errors) before cleaninsing.
+
+*   `warehouse`: Actual warehouse for querying, stores clean data.
+
+*   `hotel_mart`: Data mart for the best price query.
+
+These databases, together with the description of the connection can be found
+in the `DATABSES` variable in the configuration.
+
+In several batch jobs we commit several record at once to the database.  This
+speeds up the write speed but requires memory to hold the records before the
+commit.  On a machine with a lot of memory you can increase it, the variable
+name in the configuration and the default are:
+
+    HQ_DW_COMMIT_SIZE = 1024
+
+We also have a default price for a day in any hotel.  In a real world scenario
+we would have the prices for the hotels.  But, since we do not have the hotel
+data, we just calculate that if we do not match any offer we just give a price
+of number of days times the following (in the default currency):
+
+    HQ_DW_DAY_PRICE = 100.0
+    HQ_DW_DEFAULT_CURRECNY = 'USD'
+
+The last important variable in the configuration file is `ALLOWED_HOSTS`.  For
+the development warehouse its setting does not matter, but for a production
+system it is very important.  We talk about it below.
+
+### |0x10b| Production environment variables
 
 To build a production system we need several other pieces of software.  For a
 start the webserver that comes with `Django` is not fast enough or reliable
@@ -461,59 +587,230 @@ How you deploy your production system is up to you (the next section discusses
 one possible scenario).  Yet, how to change the default passwords, and not
 include them in clear text in files you may submit to a code repository can be
 done as using environment variables.  For an example `conf/prod.py` is
-included, using that file 
+included, using that file as the configuration (by placing `conf.prod` inside the
+`DJANGO_SETTINGS_MODULE` environment variable) you need to set the following
+environment variables to use as configuration parameters.
 
-    cd hq-dw
-    python TODO.py
+*   `HQ_DW_SECRET_KEY`: A byte string, can be anything but must remain secret.
+*   `HQ_DW_AUTH_NAME`: The database user for the webserver database.
+*   `HQ_DW_AUTH_PASS`: The password for the webserver database user.
+*   `HQ_DW_WAREHOUSE_NAME`: Database user for the warehouse database.
+*   `HQ_DW_WAREHOUSE_PASS`: Password for the warehouse user.
+*   `HQ_DW_STAGE_NAME`: Database user for the stage database.
+*   `HQ_DW_STAGE_PASS`: Password of the stage user.
+*   `HQ_DW_HOTEL_MART_NAME`: Database user for the hotel data mart.
+*   `HQ_DW_HOTEL_MART_PASS`: Password of the data mart user.
 
-### |0x10b| Extra notes on a reliable web server
+Note that the users of the four databases doe not need to be the same.  Below
+we explain how to distribute the system and use different database servers for
+each database.  Also, note that the default names of the databases in `prod.py`
+is different from the database names in `dev.py`.  You need to create these
+database on the postgres instance they are meant to be run (or change their
+names in the configuration).
 
-TODO:
+### |0x10c| Extra notes on a reliable web server
 
-config
+First of all we need a real webserver in front of the warehouse if we are going
+to expose the web function (e.g. correction of errors in the staging area) to
+operators.  Apache, nginx are some options, apache can run a django based
+application with `mod_wsgi`, whilst nginx need a WSGI webserver to serve the
+django based application.  One option of a WSGI webserver is `uwsgi`.
 
-In batch jobs, how often do we commit records to the database
+In a real world scenario we would also likely need a cache on the reverse
+proxy.  Yet, how to deploy the system is again a matter of taste.  What is
+important for the warehouse is that it needs to know what `Host:` header to
+expect.  In the configuration file the `ALLOWED_HOSTS` variable needs to be set
+to a list of all `Host:` headers that the warehouse may expect.  For example:
 
-    HQ_DW_COMMIT_SIZE = 1024
+    ALLOWED_HOSTS = [ 'warehous.hq.com' , 'dw.hq.com' ]
 
-Default price for a day in any hotel.  In a real world scenario we would have
-the prices for the hotels.  But, since we do not have the hotel data, we just
-calculate that if we do not match any offer we just give a price of number of
-days times the following (in the default currency):
-
-    HQ_DW_DAY_PRICE = 100.0
-    HQ_DW_DEFAULT_CURRECNY = 'USD'
-
-
-
-A reliable system would need much more.  A reverse proxy and load balancer,
-akin of `nginx` and a real webserver, e.g. `uwsgi`.  TODO
+Requests with a different `Host:` header will be rejected.  Wildcards are
+allowed therefore you could set it to `[ '*' ]`, but that would be horrible
+from a security standpoint.
 
 
 ## |0x200| Running the Warehouse
 
-TODO
+We have an installed warehouse, and the core of a warehouse is its ETL process.
+We also have the data mart installed and running and API.  This section discuss
+how the ETL process can be run, how the data mart can be populated and how the
+API is accessed.
+
+Everything needs to be performed from the python virtual environment we did
+setup during the installation.  Also, we need the environment variables we set
+during the installation.  If you followed the installation instructions above
+you shall be able to enter the virtual environment and set the environment
+variables by doing the following:
+
+    source ~/warehouse/venv/bin/activate
+    export DJANGO_SETTINGS_MODULE=conf.dev
+    export HQ_DW_CONF_PATH=~/warehouse/hq-dw/hq-dw
+
+If you are using a different directory than `~/warehouse` modify the above
+lines accordingly.  In theory any user that has read access to the virtual
+environment can run the ETL process but it is better to use the user that
+installed the warehouse, for consistency.
+
+Note: the virtual environment did set the `PATH` variable for us, therefore the
+commands in this section are in the execution path.  If you cannot find a
+command cross check if you are actually inside the virtual environment.
 
 ### |0x201| ETL process
 
-    https://github.com/grochmal/django-hq-stage
-    https://github.com/grochmal/django-hq-warehouse
+The ETL process consists of loading the CSV files into the tables in the
+staging area and then loading the warehouse from the staging area.  We start by
+getting the files:
 
-    /path/to/script/extract-data.sh
-    /path/to/script/load-data.sh
+    cd ~/warehouse
+    mkdir data
+    cd data
+    wget -O hq-currency.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/lst_currency.csv
+    wget -O hq-forex.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/fx_rate.csv
+    wget -O hq-offer.csv https://s3-ap-southeast-2.amazonaws.com/hq-bi/bi-assignment/offer.csv
+
+To load each file we use `hqs-load-table`, it load the CSV file into the
+relevant table in the staging area.  The loaded data is assigned a batch,
+batches are used to group data together when uploading to the warehouse.  When
+you run `hqs-load-table` it will print the batch it used, you can also give it
+the `-b` parameter to suggests a batch number to use.  For example we can
+perform the following:
+
+    $ hqs-load-table -f ./hq-currency.csv -t currency
+    ...
+    Batch: [ 1 ]
+    $ hqs-load-table -b 1 -f ./hq-forex.csv -t exchange-rate
+    $ hqs-load-table -b 1 -f ./hq-offer.csv -t offer
+
+This will reuse batch number 1 for all data loaded from the three CSV files.
+The full set of flags used by `hqs-load-table` can be found on the [github of
+the staging area package][stag].
+
+[stag]: https://github.com/grochmal/django-hq-stage
+
+Next we can load the batch into the warehouse.  To perform this we use
+`hqw-checkout-batch` with the batch number was printed by `hqs-load-table`, as
+follows:
+
+    hqw-checkout-batch -v -b 1
+
+The `-v` makes the call verbose.  Since it may be a rather long running command
+it might be useful to see the verbose output.  The full set of flags can be
+seen on the [github of the warehouse package][ware].
+
+[ware]: https://github.com/grochmal/django-hq-warehouse
+
+Once the load into the warehouse was attempted erroneous data in the staging
+area was marked as *in error*, and the fields that were considered to hold
+erroneous data were noted.  To print a list of erroneous rows in the staging
+area you can call `hqs-print-errors`, the script will output URLs that point to
+the records on the web interface of the warehouse.  You need to run
+`hqs-print-errors` on each table separately, fore example:
+
+    hqs-print-errors -t currency
+    hqs-print-errors -t exchange-rate
+    hqs-print-errors -t offer
+
+If the web interface is running you can follow the URL in a browser, correct
+the given data and submit the form (the submit button is currently not
+present).  Or, if the row is deemed unsalvageable, you can mark the error as
+ignored.
+
+After correcting the errors you can reload the batch with `hqw-checkout-batch`
+(the rows already loaded will not be reloaded, just the ones that could not be
+loaded).  Or you can use `hqw-checkout-table` to load only the erroneous rows
+in a single table, for example:
+
+    hqw-checkout-table -t offer
+
+The cycle of fixing the errors and attempting load into the warehouse can be
+attempted as many times as needed, until the row is inserted into the warehouse
+correctly.
 
 ### |0x202| Mart API
 
-    https://github.com/grochmal/django-hq-hotel-mart
-    /path/to/script/load-mart.sh
-    python3 manage.py runserver
+The data mart is meant to be an API endpoint that processes the query as fast
+as it can.  To speed up the mart we can define the time frame it is meant to
+server, i.e. we load the mart only with a fraction of the data from the
+warehouse.  This makes sense since the majority of the data in the warehouse is
+historical data whilst the mart serves real time queries on rather new data.
+
+To define a time frame for the mart you call `hqm-pop-hours`, for example:
+
+    hqm-pop-hours -tv -y 2015
+    hqm-pop-hours -v -y 2016
+
+Note that `-t` will truncate the tables, allowing for the mart to be reloaded
+with completely fresh data.  The command used loaded all of 2015 and 2016 as
+viable times for offers.  Any offer that is not valid during that period will
+not be loaded and any offer that is valid only partially during that period is
+loaded partially.
+
+To load offers (and currencies) and build the caches (links between offers and
+validity times) you need to call `hqm-reload`.  For example:
+
+    hqm-reload -v
+
+The full set of flags for `hqm-pop-hours` and `hqm-reload` can be seen on the
+[github of the hotel mart package][mart].
+
+[mart]: https://github.com/grochmal/django-hq-hotel-mart
+
+The mart may take some time to load, yet more than one mart can be configured.
+Therefore if a new mart for 2016 and 2017 needs to be loaded, it can be done
+whilst the current mart is running.  Later a switch between marts can be
+performed.
+
+The API itself is available when the web interface is running, in a production
+environment where the API needs to be fast a real webserver is needed.  The API
+is queries with a `GET` requests, with the following arguments:
+
+*    `queryAt`: The moment in time the query is made, this is needed because we
+     do not have data for the current time. In a real world situation the mart
+API would use the current date and time but it is not possible with historical
+data. The argument is an ISO data followed by T and a two digit hour (e.g.
+2015-11-11T11 is November the 11th, 2015, at 11AM).
+
+*    `hotelId`: The hotel for which we are checking prices, it is an integer
+     value.
+
+*    `checkinDate`: An ISO 8601 date, the day for which we are planning to
+     start our stay at the hotel.
+
+*   `checkoutDate`: And ISO 8601 date, the last day of our stay.
+
+One way to test the API is to call it using the `curl` program, fore example:
+
+    curl -i 'http://localhost:8000/api/?queryat=2016-06-07T11&hotelid=169&checkindate=2016-06-25&checkoutdate=2016-06-26'
+
+The API returns errors as HTTP codes therefore the `-i` in the `curl` call is
+useful (it prints the HTTP headers of the response).
 
 ### |0x203| Extensions
 
-The error fixing in the stage area can be vastly improved.  An HTTP interface
-for loading data into batches would be very useful too.
+Compared to the required warehouse we have a some extended functionality.  Some
+of it is just an extension of what the original design proposes other parts are
+completely new, here we shortly discuss the differences. After that we discuss
+what would need be improved further in the current warehouse.
 
-The webserver definitely must not be run with Django's basic webserver.
+The web interface for all records and notably for error correction is much
+better than writing SQL to try to fix bad data.  SQL is not meant to be used as
+a cherry picking update language, more often than not a typo in SQL produces
+problems (e.g. "delete from table <Enter>... oh shiiit!").
+
+An API lo load the data into the staging area using `POST` is available but
+probably does not work.  This API would allow for automation for data
+providers, yet, to be able to work as such, the API needs several improvements.
+Currently the load API can only receive single items, we would need to define a
+maximum number of items per request and a proper batch management.
+
+The `hqs-print-errors` script is a dirty hack.  In reality we should have that
+as part of the web interface, i.e. we should not need to run the script but
+instead have a screen that already presents all (non-ignored) errors to us.
+This is actually an easy improvement to do.
+
+One last thing that is certainly needed in the current warehouse is a proper
+logging system.  The current `yield+print` logging is reaching its limits,
+anything more complex than what we have will overstretch the logging.
 
 
 ## |0x300| Design
@@ -576,7 +873,7 @@ warehouse the *date/time* dimension is not present, therefore dates can be
 found in tables.  In a real warehouse the *date/time* dimensions would be the
 most used dimension.
 
-Database configuration was outlined above in [Installation](#install), and it
+Database configuration was outlined above in Installation, and it
 serves mostly the warehouse.  If the warehouse grows and the staging area and
 mart are moved to different server instances the configuration for the
 warehouse shall be kept.
@@ -610,7 +907,7 @@ The warehouse became too big to run on a single machine.
 Three different database servers.  TODO
 
 
-## |0x500| Frequent Questions
+## |0x500| Frequent Questions (FAQ)
 
 A FAQ is a list of questions and answers that allow for the explanation of
 specific decisions that would be difficult to fit in any other section.  The
