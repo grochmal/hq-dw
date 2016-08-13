@@ -111,6 +111,7 @@ quirky parts.  See also the FAQ on how to understand Django code.
     *   |0x507| I do not know Django, how do it check the DB optimisation?
     *   |0x508| Why do you believe that optimisation by caching is better?
     *   |0x509| There are a lot of quirks with python 3, why did you use it?
+    *   |0x50a| That is quite a lot of code, how long did it take?
 6.  |0x600| Copying
 
 
@@ -860,39 +861,66 @@ inserted and amendments to inserted data before it is processed and uploaded
 into the warehouse.
 
 In the HQ warehouse we have a small number of input files (only 3), and batches
-are not needed since we never insert into the same table twice.  But the
+are not really needed since we never insert into the same table twice.  But the
 setting of all columns to VARCHAR(255) allows us to catch several errors
 without the need to review the input files.
 
 ### |0x302| Warehouse
 
-The focus in the warehouse design is on *facts* and *dimensions*, yet, in the HQ
-warehouse, that has already been done for us.  Another important detail is
+The focus in the warehouse design is on *facts* and *dimensions*, yet, in the
+HQ warehouse, that has already been done for us.  Another important detail is
 database configuration, since queries may run for a long time.  In the HQ
 warehouse the *date/time* dimension is not present, therefore dates can be
 found in tables.  In a real warehouse the *date/time* dimensions would be the
-most used dimension.
+most used dimensions.
 
-Database configuration was outlined above in Installation, and it
+Database configuration was outlined above in the Installation section, and it
 serves mostly the warehouse.  If the warehouse grows and the staging area and
 mart are moved to different server instances the configuration for the
-warehouse shall be kept.
+warehouse database instance shall be kept.
 
 The data in the warehouse can be assumed to be correct.  If data is incorrect
 there is a problem with the procedure of retrieving it from the staging area.
-The retrieval procedure shall only accept row in the staging area that are
-correct and can build correct rows in the warehouse, all incorrect rows are
+The retrieval procedure shall only accept rows in the staging area that are
+correct and only build correct rows in the warehouse, all incorrect rows are
 marked as such in the staging area and never reach the warehouse.
 
 ### |0x303| Data Mart
 
-The data mart is populated from the warehouse, therefore we can assume that 
-TODO
+The data mart is populated from the warehouse, therefore we can assume that the
+data it is fetching is correct.  The mart does not need all the data in the
+warehouse, therefore we allow for it to load only pieces of it.
+
+A mart is configured to store data only for a couple of years.  For example, in
+2016, it makes sense to store hotel offers for 2016 and 2017 but does not make
+sense to have the offers for 2015 in there.  Less data in the mart mean queries
+against less data, which in turn means faster queries.
+
+The mart is queried based on the validity of offers at the moment the query is
+fired (at least it should be in a real world scenario).  Therefore we cache the
+validity of each offer against all days, and hours within these days, in the
+time period the mart is configured for.  The cache makes querying the data mart
+much easier (and faster).
+
+We do not have enough data to perform real-time queries to the mart.  This
+limits the possibility of testing the mart.  To overcome this a new query
+parameter was added: `query_at`.  Thanks to this parameter we can simulate
+queries happening at any point in time.  For a real world application of the
+mart we would need to either remove the parameter and use the current time, or
+place extra logic in a system in front of the data mart (e.g. in the load
+balancer) that would add the parameter based on the current time.
+
+The design of loading only specific years is useful when the data in the mart
+becomes old.  For if we have a mart for 2016 and 2017, in the middle of 2017 we
+will want to drop most of the data.  In that case we can build a second mart
+for 2017 and 2018 and switch the marts once the second mart is ready.
 
 
 ## |0x400| Spreading across several machines
 
-TODO
+The warehouse is extensively configurable, and, thanks to the fact that it is
+based on a web framework, can easily be run with different parts of it on
+different machines.
 
 ### |0x401| Why would you like to distribute?
 
