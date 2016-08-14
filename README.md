@@ -922,13 +922,15 @@ The warehouse is extensively configurable, and, thanks to the fact that it is
 based on a web framework, can easily be run with different parts of it on
 different machines.
 
+TODO
+
 ### |0x401| Why would you like to distribute?
 
-The warehouse became too big to run on a single machine.
+The warehouse became too big to run on a single machine. TODO
 
 ### |0x402| Example setup
 
-`uwsgi` is really needed here.
+`uwsgi` is really needed here.  TODO
 
 ### |0x403| What would you need to change
 
@@ -940,11 +942,44 @@ Three different database servers.  TODO
 A FAQ is a list of questions and answers that allow for the explanation of
 specific decisions that would be difficult to fit in any other section.  The
 following list is an excerpt of decisions about technologies used and reasons
-why I digressed from the original proposal:
+why I digressed from the original proposal.
 
 ### |0x501| I expected to see SQL and got a Web Framework, what gives?
 
-TODO
+I worked on a couple of warehouses and saw several issues in how they were
+designed.  First of all was the overuse of triggers which I talk more about in
+the next question, second was the complexity of the code that checks for
+correct data.  SQL, even procedural SQL is not an expressive language for
+branching conditions.  SQL is a language for query definition, not far off
+functional languages, but data verification is better achieved with plain
+procedural structured syntax.
+
+Verification is better in procedural languages because we want to check for all
+errors when a row of data comes in, not fail on the first error.  It is nicer
+with an operator of the warehouse to try to give him as much information as
+possible up front, instead of forcing him to re-run the verification procedure
+over and over.  Therefore performing checking in `python` is considerably
+better than trying to achieve the same by bending SQL syntax.  Django uses an
+Object Relational Model (ORM) to perform SQL whilst it keeps the syntax within
+the python environment as pure python objects.
+
+Postgres allows for procedures to be written in `python`, and that is a path we
+could try.  But it does not allow to perform caching inside these procedure,
+which is our next point.
+
+Caching in Django (or in python in general) can be performed in memory, in
+other words we have much more control over what is cached and how.  In a real
+world scenario we would use a memory based database (e.g. `redis`) to manage
+the caches.  This caching allows us to make less queries to the database, and
+allows for a better use of the cache inside the `RDMBS` (e.g. the database does
+not need to fetch the currency rows or keep them in cache, it only needs to
+keep track of the primary key index of the currency table).
+
+As a bonus, Django gives us an almost free web interface.  One thing that
+people ask for most often in a warehouse is an interface to look whether
+certain rows have been loaded or not, or an interface to update erroneous rows
+that does not require knowledge of SQL.  We have both, and changing the display
+of the interfaces is trivial since we are using a templating engine.
 
 ### |0x502| OK, but why do you use an ORM?
 
@@ -1020,11 +1055,146 @@ of database cache.
 
 ### |0x505| Why Django?
 
-TODO
+I am most familiar with Django as a web framework and it is the `ORM` I am most
+familiar with as well.  A real warehouse needs an interface to a database
+(probably several databases), an engine to verify erroneous data, and a web
+interface for operators.  Django provides all pieces.
+
+Moreover, I worked on a project where we used Django as a web interface for a
+warehouse.  After the initial setup we noticed that we started migrating
+functionality from procedures in the database into django.  That situation gave
+birth to the idea of making a warehouse fully in django (yet, we could not
+rewrite half a project at that point).
+
+To be fair Django's `ORM` has several limitations, notably it cannot build a
+query with an `OR` inside the `WHERE` clause (although you can get around it
+with a `(query1) UNION ALL (query2)`).  All limitations have decent
+workarounds, and you can also query using raw SQL, but you need to keep them in
+mind when building database indexes.
 
 ### |0x506| Would you use Django in production in a large warehouse?
 
-Probably not.
+Probably not.  A really huge warehouse, processing Tera bytes of rows per day
+would not be suitable to be deployed on an `RDBMS`.  Django can be slow
+sometimes, and it is very closely coupled together, i.e. its `ORM` is coupled
+with the templating system, with the engine, etc.  Therefore it would be
+troublesome to substitute django's `ORM` to use a NoSQL database for certain
+pieces.
+
+For a really huge warehouse, I'd try to do something very similar to this one
+but with loser coupling.  Using `pyramid` for the web part and coupling it with
+`sqlalchemy` for the SQL and with something like `datastax` or a `mongodb`
+binding for the more speed hungry (and not ACID required) records.  To be fair
+that would be an interesting project to try.
+
+### |0x507| I do not know Django, how do it check the DB optimisation?
+
+Yeah, OK.  That's the downside of doing it in django.  Django has an awesome
+tutorial that can be found with a trivial google search, but that would be if
+you are curious, below I explain how to read the Django files in this
+repository and in the repositories of each warehouse package.
+
+In this repository we have:
+
+*   Several files in the `conf` directory.  These are read by Django as
+   configuration parameters and then available in `django.seetings`.
+
+*   `hq/routers.py` which is just a simple trick to route the SQL queries to
+   the correct database based on the object being queried.
+
+*   `conf/urls.py` is the entry point for the web interface, it defines how
+   URLs are handled.
+
+All packages have the following files and/or directories:
+
+*   `models.py` is the file that defines the tables.  It is the most important
+   file for us.  Each class in there is a table (unless it has `abstract =
+True` specified).  Each class variable in a class table is a column, the type
+of the column is defined by the object type assigned to the variable, and other
+parameters for the column are arguments to the constructor of this object.
+
+*   Notable arguments that define columns are `db_index` which produces an
+   index on the column and `default` which operates like the SQL parameter of
+the same name 9gives a default value if `NULL` is inserted).
+
+*   A `Meta` class can be defined on a table class to make several changes on
+   how the resulting table behaves.  An `abstract` field on a `Meta` class
+forces a table to not be built for a table class, this is useful to inherit
+such a class (with all its fields) into a different class that will build a
+table.  `unique_together` produces unique indexes (and constraints) on the
+given columns, `index_together` produces non-unique indexes.
+
+*   `views.py` and `urls.py` contain the webserver functionality, `urls.py`
+   just drive the URLs home to the views which send a response.  Most views are
+trivial, the only two views that are more complex are the `API` calls in the
+staging area package and the data mart package.  How the return is performed
+from these views is heavily commented.
+
+*   `command_line.py` is a file not used by django, but added to create the
+   command line tools used by the warehouse ETL process.  In there we have
+functions that are entry points for each command line tool, which function is
+used for which tool is defined in `setup.py`.  The functions simply process
+their arguments and use django objects to communicate with the database.
+
+*   Finally the `templates` directory in each package holds the templates used
+   to display the responses from the views.  All static content (e.g. `CSS` and
+`javascript`) is included in the templates for simplicity (that's actually bad
+practice, but otherwise it would complicate the installation).
+
+Where the `ORM` queries become too complex I have added comments that explain
+them in SQL.
+
+### |0x508| Why do you believe that optimisation by caching is better?
+
+It is not necessarily better, in the case at hand it is better.  Since the
+warehouse maintains consistency it will check foreign keys on each insert.  Yet
+on a failure we will not know which foreign key failed, and we want to be able
+to tell an operator what is wrong.  The only way for us to check which foreign
+key failed is to query the tables to which they point and find the queries that
+do not return results.  Making extra queries (which may be several for a single
+insert) whilst we are already inserting hundreds of thousands of rows is not a
+good idea.
+
+One may argue that the database will need to check the foreign keys during the
+insert operation, and therefore will need to select from the tables that the
+foreign keys point to.  That is correct, but the database does not need to
+select actual records from the linked tables.  Foreign keys are indexed
+therefore to check them the database only needs to search the index.  Therefore
+our in memory cache is an actual performance boots.
+
+### |0x509| There are a lot of quirks with python 3, why did you use it?
+
+To fair, I have started the project in `python2` but a week in I discovered
+that `numpy` and `scipy` (the two major libraries that are holding systems from
+upgrading to `python3`) finally released their `python3` compatible versions.
+This means that a switch to `python3` is over the horizon, and who does not
+switch to it will end with an unsupported version.
+
+The move to `python3` is finally happening and it would be unwise to not switch
+too.  I use `python3` extensively these days because I use a distro that has
+`python3` as the main python (arch) and I am lazy to add that extra character
+to use `python2` to all scripts.  Yet, this was the first big piece of code
+using `python3`.
+
+### |0x50a| That is quite a lot of code, how long did it take?
+
+It took some 90-100 hours of work, but this is a rather rough estimate since I
+did not count.  About 30% of the code I have copied from another project
+(notably the front-end), which helped a lot.
+
+Several other things could be done, for example, there isn't a single test
+written.  But that would be unnecessary "gold-plating", i.e. overworking a
+project that already is good enough for its purpose.  I had a lot of fun with
+this piece of code, when I saw the phrase "feel free to over-deliver" in the
+requirements I was already happy that I will able to make something that I may
+reuse someday.
+
+The only thing that I would like to do with this code that I could not is to
+test the entire thing on a postgres database.  Due to limitations of
+computation power I have currently available I did not manage to test the
+warehouse with the full ~800MB data.  I'm pretty confident about the robustness
+of the code, but, given that there are no unit tests, it is as far as
+confidence can go.
 
 
 ## |0x600| Copying
