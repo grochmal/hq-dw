@@ -922,19 +922,76 @@ The warehouse is extensively configurable, and, thanks to the fact that it is
 based on a web framework, can easily be run with different parts of it on
 different machines.
 
-TODO
+In general the packages (the repositories) can be combined as needed, i.e.
+based on which tables need to be queried.  A machine that will only deal with
+mart tables only need the configuration package and the mart package.
 
 ### |0x401| Why would you like to distribute?
 
-The warehouse became too big to run on a single machine. TODO
+The warehouse became too big to run on a single machine.  This may be because
+of plain memory or processing power usage.  The moment the mart (the mart
+database to be exact) runs on a different machines the lesser number of
+database hits benefits the staging area and the warehouse.
+
+Separating each database to its own server do have speed advantages.  When the
+staging area is on one server and the warehouse on another, the disk on the
+first is mostly accessed to read record continuously from a table whilst the
+disk on the second machine is mostly accessed to perform the insert operation.
+When running on a single machine there are seeks between the operations.
+
+Moreover, there can be several marts and several staging areas (and with some
+extra effort the warehouse database can run on a cluster).  Several marts are
+trivial: a mart machine can be cloned and a load balancer can be added between
+the machines.  Several staging areas could be loaded with different pieces of
+data, and since the ETL process ignored duplicates we could even add the data
+for the dimensions to all staging areas and produce the cache (of currency and
+forex) on each staging area.
 
 ### |0x402| Example setup
 
-`uwsgi` is really needed here.  TODO
+We will assume that we have the system deployed on a real webserver.  Let's say
+that we have `nginx` in front and a `uwsgi` setup running the actual django web
+code.  This machine runs the API and the web interfaces.
+
+This web part is then connected to four separate databases (one of them is the
+`default` database, used for authentication), each on its own server.  The
+database servers only run postgres, no warehouse code is there.
+
+A fifth database server is prepared and a new webserver with a data mart for
+the next two years.  The web part will be switched to this server, when the
+data in the old mart becomes old (i.e. when some 60-70% of the data in the mart
+will be in the past).
 
 ### |0x403| What would you need to change
 
-Three different database servers.  TODO
+To change the database servers we have the `DATABASES` configuration variable
+in the several configuration examples in the `conf` directory.  The options
+`HOST` and `PORT` are self-explanatory.
+
+The big piece of configuration would be `nginx` and `uwsgi` (or `apache` and
+`mod_wsgi`), yet covering the setup of that would require documentation on its
+own and there are several good tutorials available anyway.  Webserver setup may
+be tricky, and there are hundreds of ways of performing it (several of which
+depending on personal preference).
+
+One thing that may be useful it the list of the packages that different parts
+of the warehouse require (yes, not all parts require all packages):
+
+*   A webserver running the web interface (not only the API) needs all
+   packages, this is because the navigation pane is hardcoded.
+
+*   `hq-dw` is needed by all parts since it contains the configuration.
+
+*   Machines running only the data mart API only nee `django-hq-hotel-mart`,
+    and `django-hq-warehouse` if they need to load themselves.
+
+*   A staging area needs `django-hq-stage` to load the CSV files and
+   `django-hq-warehouse` if they are the machines that perform the ETL.
+
+*   The warehouse machines require only `django-hq-warehouse`.
+
+This list probably works, but I have not tested such configuration.  I just
+attempted a "best effort" at making the packages able to work by themselves.
 
 
 ## |0x500| Frequent Questions (FAQ)
